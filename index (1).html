@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Matriz de Prioridad — Requerimientos CI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --azul:#0891b2;
+    --rojo:#dc2626;
+    --rojo-osc:#991b1b;
+    --amarillo:#d97706;
+    --verde:#059669;
+    --gris:#64748b;
+    --bg:#f4f6f8;
+    --card:#ffffff;
+    --border:#e2e6ea;
+    --text:#1e293b;
+    --text-mut:#64748b;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:Arial, Helvetica, sans-serif;background:var(--bg);color:var(--text);}
+  .wrap{max-width:1360px;margin:0 auto;padding:24px 28px 60px;}
+
+  header{margin-bottom:20px;}
+  header h1{font-size:22px;margin:0 0 4px;font-weight:700;}
+  header p{margin:0;color:var(--text-mut);font-size:13px;}
+  #source-note{font-size:11.5px;color:var(--text-mut);margin-top:6px;}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px 16px;}
+  .kpi .val{font-size:24px;font-weight:700;line-height:1.1;}
+  .kpi .lbl{font-size:11px;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-top:4px;}
+
+  .filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px 14px;align-items:flex-end;}
+  .filters label{font-size:11px;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:3px;}
+  .filters button.reset-btn{background:var(--gris);color:#fff;border:none;border-radius:4px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:inherit;height:34px;}
+  .filters button.reset-btn:hover{opacity:.9;}
+
+  .msel{position:relative;}
+  .msel-btn{font-family:inherit;font-size:13px;padding:7px 30px 7px 10px;border:1px solid var(--border);border-radius:4px;background:#fff;color:var(--text);min-width:180px;text-align:left;cursor:pointer;position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:34px;}
+  .msel-btn::after{content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text-mut);font-size:10px;}
+  .msel-btn.active{border-color:var(--azul);}
+  .msel-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;background:#fff;border:1px solid var(--border);border-radius:6px;min-width:240px;max-width:320px;box-shadow:0 4px 14px rgba(0,0,0,.1);padding:8px;}
+  .msel-search{width:100%;font-family:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;margin-bottom:6px;}
+  .msel-actions{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px;}
+  .msel-actions a{color:var(--azul);text-decoration:none;cursor:pointer;}
+  .msel-actions a:hover{text-decoration:underline;}
+  .msel-options{max-height:220px;overflow-y:auto;}
+  .msel-option{display:flex;align-items:center;gap:7px;padding:4px 4px;font-size:12.5px;border-radius:3px;cursor:pointer;}
+  .msel-option:hover{background:#f4f6f8;}
+  .msel-option input{margin:0;cursor:pointer;}
+  .msel-empty{font-size:12px;color:var(--text-mut);padding:6px 4px;}
+
+  .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start;}
+  @media (max-width:1050px){.grid{grid-template-columns:1fr;}}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:18px;}
+  .card h2{font-size:14px;margin:0 0 4px;font-weight:700;}
+  .card .sub{font-size:12px;color:var(--text-mut);margin:0 0 14px;}
+
+  table.matrix{width:100%;border-collapse:collapse;font-size:13px;}
+  table.matrix th{text-align:center;font-size:11px;color:var(--text-mut);text-transform:uppercase;letter-spacing:.02em;padding:6px 4px;border-bottom:2px solid var(--border);}
+  table.matrix th.rowlabel-h{text-align:left;}
+  table.matrix td{padding:0;border-bottom:1px solid var(--border);}
+  table.matrix td.rowlabel{padding:8px 8px 8px 0;font-size:12.5px;font-weight:600;white-space:nowrap;}
+  table.matrix td.rowtotal{padding:8px 4px;text-align:center;font-weight:700;font-size:12.5px;color:var(--text-mut);}
+  .cell-btn{display:flex;align-items:center;justify-content:center;height:44px;width:100%;font-weight:700;font-size:14px;cursor:pointer;border:none;color:#fff;transition:filter .1s;}
+  .cell-btn:hover{filter:brightness(1.08);}
+  .cell-btn.zero{background:#eef1f4 !important;color:#b7c0ca;cursor:default;font-weight:400;}
+  .cell-btn.zero:hover{filter:none;}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;color:var(--text-mut);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:10px;height:10px;border-radius:2px;display:inline-block;}
+
+  .team-row-btn{font-family:inherit;font-size:12.5px;font-weight:600;background:none;border:none;padding:8px 0;cursor:pointer;color:var(--text);text-align:left;}
+  .team-row-btn:hover{color:var(--azul);}
+  .team-row-btn.selected{color:var(--azul);text-decoration:underline;}
+
+  #drill .empty{color:var(--text-mut);font-size:13px;padding:20px 0;text-align:center;}
+  .drill-item{border-bottom:1px solid var(--border);padding:9px 0;font-size:12.5px;}
+  .drill-item:last-child{border-bottom:none;}
+  .drill-item .proj{font-weight:700;margin-bottom:2px;}
+  .drill-item .meta{color:var(--text-mut);font-size:11.5px;}
+  .badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10.5px;font-weight:700;color:#fff;margin-left:6px;}
+  #drill-list{max-height:520px;overflow-y:auto;padding-right:4px;}
+  #drill-title{font-size:13px;font-weight:700;margin-bottom:2px;}
+  #drill-count{font-size:12px;color:var(--text-mut);margin-bottom:12px;}
+
+  .chart-card{margin-top:16px;}
+  canvas{max-height:340px;}
+
+  .gran-toggle{display:flex;border:1px solid var(--border);border-radius:5px;overflow:hidden;height:30px;}
+  .gran-toggle button{font-family:inherit;font-size:11.5px;padding:0 12px;border:none;background:#fff;color:var(--text-mut);cursor:pointer;}
+  .gran-toggle button.active{background:var(--azul);color:#fff;}
+  .gran-toggle button:not(:last-child){border-right:1px solid var(--border);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Matriz de Prioridad · Requerimientos CI</h1>
+    <p>Cruce de Criticidad × Esfuerzo sobre la base de Requerimientos · OCASA Gerencia CX</p>
+    <p id="source-note"></p>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="filters">
+    <div><label>Área solicitante</label><div class="msel" id="f-area-wrap"></div></div>
+    <div><label>Tipo de requerimiento</label><div class="msel" id="f-tipo-wrap"></div></div>
+    <div><label>Estado</label><div class="msel" id="f-estado-wrap"></div></div>
+    <div><label>Solicitante</label><div class="msel" id="f-solicitante-wrap"></div></div>
+    <button class="reset-btn" id="btn-reset">Limpiar filtros</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Matriz de prioridad</h2>
+      <p class="sub">Criticidad × Esfuerzo. El color indica zona de prioridad (verde = quick win, rojo = baja prioridad / alto esfuerzo). Click en una celda para ver el detalle.</p>
+      <div style="overflow-x:auto;">
+        <table class="matrix" id="matrix-table"></table>
+      </div>
+      <div class="legend" id="legend"></div>
+
+      <div class="card chart-card" style="border:none;padding:0;">
+        <h2>Distribución por tipo de requerimiento</h2>
+        <p class="sub">Requerimientos por criticidad, apilados por tipo · click en un segmento para filtrar el detalle</p>
+        <canvas id="stackChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Detalle</h2>
+      <p class="sub">Seleccioná una celda de la matriz para listar los requerimientos</p>
+      <div id="drill">
+        <div class="empty">Elegí una celda de la matriz o una barra del evolutivo para ver los requerimientos incluidos.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2>Por responsable CI</h2>
+    <p class="sub">Requerimientos por responsable del equipo de CI. La Saturación es relativa: 100% = el responsable con mayor carga ponderada (Esfuerzo × Criticidad) entre los tareas abiertas; el resto se escala contra ese máximo. Click en una fila para ver el detalle.</p>
+    <div style="overflow-x:auto;">
+      <table class="matrix" id="team-table"></table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h2>Evolutivo por fecha de requerimiento</h2>
+        <p class="sub" id="evo-sub">Requerimientos recibidos, segmentados por Estado</p>
+      </div>
+      <div class="gran-toggle" id="gran-toggle">
+        <button type="button" data-gran="week">Semanal</button>
+        <button type="button" data-gran="month" class="active">Mensual</button>
+      </div>
+    </div>
+    <div id="evo-selection" style="display:none;font-size:12px;margin-bottom:6px;">
+      <span id="evo-selection-text" style="font-weight:700;"></span>
+      <a href="#" id="evo-clear" style="margin-left:10px;color:var(--azul);text-decoration:none;">Quitar selección de celda ×</a>
+    </div>
+    <div id="evo-period-info" style="display:none;font-size:12px;margin-bottom:10px;">
+      <span id="evo-period-text" style="font-weight:700;"></span>
+      <a href="#" id="evo-period-clear" style="margin-left:10px;color:var(--azul);text-decoration:none;">Quitar filtro de barra ×</a>
+    </div>
+    <p class="sub" style="margin:-6px 0 10px;">Click en una barra para filtrar el detalle por ese período y estado</p>
+    <canvas id="evoChart" style="max-height:320px;"></canvas>
+  </div>
+
+</div>
+
+<script id="data-json" type="application/json">[{"id": "REQ-19f8b76934444a61", "fecha_req": "2026-07-22T20:14:42.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "BI", "tarea": "Revisión de inconsistencias entre SAP y DW para casos identificados como potenciales falsas entregas en el tablero de BI", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f8aafd3d950915", "fecha_req": "2026-07-22T16:37:40.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Reemplazo de la lógica actualmente asociada al tablero Carta de Documento", "proyecto": "Carta de Documento", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f8a132c298602e", "fecha_req": "2026-07-22T13:46:34.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "unidad de negocio", "tarea": "nueva vista tipo funnel para darle a la operación", "proyecto": "MELI CBT", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f89f473ff94a85", "fecha_req": "2026-07-22T13:13:00.000Z", "solicitante": "Fernando Jazmin", "responsable": "Sin responsable asignado", "area": "Rosario", "tarea": "corregir el número final del PBI SLA por equipos entregados no cerrados correctamente", "proyecto": "SLA Rosario", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f61b54c6464f51", "fecha_req": "2026-07-14T17:38:50.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "MELI CBT", "tarea": "Considerar estado P37 en ausencia de P36", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f61ac99656bd68", "fecha_req": "2026-07-14T17:29:19.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Automatización de notificaciones por estados pendientes de MELI CBT", "proyecto": "", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f5cb5cfbd9b925", "fecha_req": "2026-07-13T18:21:18.000Z", "solicitante": "Gisela Falcon", "responsable": "Sin responsable asignado", "area": "PRESTIGE AUTO S.A.U", "tarea": "Envío de un reporte diario de retiros fallidos para cliente PRESTIGE AUTO S.A.U", "proyecto": "", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f38a7942285114", "fecha_req": "2026-07-06T18:19:38.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "FAR", "tarea": "incorporación de un nuevo KPI en el tablero de FAR orientado a la detección de potenciales falsas entregas", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f389cf57778573", "fecha_req": "2026-07-06T18:07:58.000Z", "solicitante": "Melissa Ailen Taurasi Gomez", "responsable": "Sin responsable asignado", "area": "MBE AUSTRAL SRL", "tarea": "cargar canalizador de servicios/clientes/APs", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19f22ef669ffda00", "fecha_req": "2026-07-02T13:05:00.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "automatización de correos de seguimiento para equipos de FAR sin movimiento", "proyecto": "Automatización de correos FAR", "tipo": "Automatizaciones Generales", "criticidad": "Sin clasificar", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19eff7f3deb34809", "fecha_req": "2026-06-25T15:56:28.000Z", "solicitante": "Melissa Ailen Taurasi Gomez", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "cargar canalizador de servicios/clientes/APs", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19ef4699ae845cc6", "fecha_req": "2026-06-23T12:17:02.000Z", "solicitante": "Melissa Ailen Taurasi Gomez", "responsable": "Sin responsable asignado", "area": "Pampa Energía", "tarea": "Cargar el canalizador de los servicios/clientes/APs indicados", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19e64b1e2440d414", "fecha_req": "2026-05-26T14:31:12.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "MailAmericas", "tarea": "generación de una vista no pública para simular el comportamiento de una nueva propuesta de canalizador", "proyecto": "", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19e4140b2d80ee8c", "fecha_req": "2026-05-19T17:20:12.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Comparto el requerimiento para el tablero de MELI CUSTOMS CLEARANCE, orientado al monitoreo de los tiempos del proceso aduanero y logístico, contemplando tres etapas", "proyecto": "MELI CUSTOMS CLEARANCE", "tipo": "Armado de Tableros", "criticidad": "Sin clasificar", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19e3cf7ca59d75df", "fecha_req": "2026-05-18T21:21:51.000Z", "solicitante": "Maria Eugenia Acosta", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Optimización en la estructura de los datos de logística inversa consumidos desde el Data Warehouse, específicamente sobre la tabla DW Fact_Visitas_Retiros_Nuevo", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19e3b85cf734f07d", "fecha_req": "2026-05-18T14:37:57.000Z", "solicitante": "Candela Rosario Alessi", "responsable": "Sin responsable asignado", "area": "Grupo Alas", "tarea": "Requerimiento de tablero del servicio de Grupo Alas (directa e inversa estándar), similar al tablero Decathlon, con colectas desde la sucursal Tortuguitas", "proyecto": "Tablero directa e inversa estándar", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19e21bf1f8d8973d", "fecha_req": "2026-05-13T14:30:33.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Customer Experience", "tarea": "Analizar requerimiento de nueva pestaña SLA Ácido Ciclo Total en tablero Renaper", "proyecto": "Tablero Renaper", "tipo": "Armado de Tableros", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19df3c8ca66a4143", "fecha_req": "2026-05-04T16:18:52.000Z", "solicitante": "Lucas Sebastian Sagasta", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "(sin descripción)", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19dda8562157a7ec", "fecha_req": "2026-04-29T18:34:53.000Z", "solicitante": "Mariela Pinon", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Sumar KPIs de performance Customer B2B/B2C y KPIs NPs en una primera etapa", "proyecto": "Health Dashboard B2B", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19dd48ebd24c9153", "fecha_req": "2026-04-28T14:47:24.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "actualización del Monitor Operativo de Eventos", "proyecto": "Monitor Operativo de Eventos", "tipo": "Proyectos Nuevos", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19db0da26f4d962d", "fecha_req": "2026-04-21T16:23:09.000Z", "solicitante": "Gisela Falcon", "responsable": "Sin responsable asignado", "area": "DABRA SA", "tarea": "Actualizar el tablero DABRA para incluir nuevos servicios y el evento que viene", "proyecto": "DABRA", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19dacb2f48c3f0b2", "fecha_req": "2026-04-20T21:02:21.000Z", "solicitante": "Gisela Falcon", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "actualización de estado Ingreso piezas RENAPER", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19d880d11c374842", "fecha_req": "2026-04-13T18:14:01.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "requerimiento del tablero correspondiente al cliente FAR", "proyecto": "FAR", "tipo": "Armado de Tableros", "criticidad": "Baja", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19d87b47dfce6e5e", "fecha_req": "2026-04-13T16:37:15.000Z", "solicitante": "Gisela Falcon", "responsable": "Sin responsable asignado", "area": "CDGD", "tarea": "Automatización de envío de alertas", "proyecto": "", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19d8791b35dff186", "fecha_req": "2026-04-13T15:59:25.000Z", "solicitante": "Gisela Falcon (mediante Documentos de Google)", "responsable": "Sin responsable asignado", "area": "ocasa.com", "tarea": "(sin descripción)", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19d6e80e47efddf4", "fecha_req": "2026-04-08T19:10:32.000Z", "solicitante": "Agustin Nicolas Gimenez", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "incorporar el campo Centro de Imposición en el aplicativo de canalizadores de la tabla Fact_SLA_No_Meli_Canalizador", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19d1aa1ec3995b7f", "fecha_req": "2026-03-23T12:18:55.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "RASH", "tarea": "Agregar filtro por cliente en tablero multicliente para visualizar cada cliente por separado", "proyecto": "tablero multicliente de RASH", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19d1a5a23bd44e12", "fecha_req": "2026-03-23T11:00:00.000Z", "solicitante": "Sabrina Fallet", "responsable": "Sin responsable asignado", "area": "XD", "tarea": "Relevamiento de KPIs de la unidad de negocio XD", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19ce2ae2272321fc", "fecha_req": "2026-03-12T15:33:08.000Z", "solicitante": "Anders José Graffe muñoz", "responsable": "Sin responsable asignado", "area": "Gerencia de Customer Intelligence", "tarea": "Requerimiento tablero directa", "proyecto": "ADIDAS", "tipo": "Armado de Tableros", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cde1c2f782c166", "fecha_req": "2026-03-11T18:15:14.000Z", "solicitante": "Anders José Graffe muñoz", "responsable": "Sin responsable asignado", "area": "Customer Intelligence", "tarea": "Requerimiento tablero Molinos", "proyecto": "", "tipo": "Armado de Tableros", "criticidad": "Baja", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cde0d58fcad805", "fecha_req": "2026-03-11T17:59:02.000Z", "solicitante": "Anders José Graffe muñoz", "responsable": "Sin responsable asignado", "area": "Customer Intelligence", "tarea": "(sin descripción)", "proyecto": "tablero Molinos", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cd3f23347dc10a", "fecha_req": "2026-03-09T18:53:11.000Z", "solicitante": "Anders José Graffe muñoz", "responsable": "Sin responsable asignado", "area": "Customer Intelligence", "tarea": "(sin descripción)", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cd3f22ceac4d26", "fecha_req": "2026-03-09T18:53:20.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Agregar una hoja de volumen a los tableros de Nefra y Tuteur tal como se encuentra en el tablero de Molinos. También agregar al tablero de Nefra...", "proyecto": "NEFRA - TUTEUR", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cd2a6a97909989", "fecha_req": "2026-03-09T12:51:13.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "medir el cumplimiento del SLA del servicio de logística inversa", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cc5190a993d072", "fecha_req": "2026-03-06T21:41:33.000Z", "solicitante": "Camila Aquino", "responsable": "Sin responsable asignado", "area": "Molinos", "tarea": "Ajuste en la hoja de Volumen del tablero de Molinos para modificar el cálculo del reporte de cantidad de Equipos", "proyecto": "Tablero Molinos", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cbf6d9ae6ea08e", "fecha_req": "2026-03-05T19:15:56.000Z", "solicitante": "Celina Villar (mediante Hojas de cálculo de Google)", "responsable": "Sin responsable asignado", "area": "Ocasa", "tarea": "Requerimiento Renault", "proyecto": "Renault", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19cba7f7d06834ff", "fecha_req": "2026-03-04T20:17:22.000Z", "solicitante": "Celina Villar", "responsable": "Sin responsable asignado", "area": "Renault", "tarea": "Requerimiento KPIs Renault", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Baja", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": "2026-03-05", "fecha_cierre": null}, {"id": "REQ-19cba3eeb832ea36", "fecha_req": "2026-03-04T19:06:51.000Z", "solicitante": "Celina Villar", "responsable": "Sin responsable asignado", "area": "Renault", "tarea": "Requerimiento KPIs Renault", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": "2026-03-06", "fecha_cierre": null}, {"id": "REQ-19c2a2276139727d", "fecha_req": "2026-02-04T19:30:31.000Z", "solicitante": "Celina Villar", "responsable": "Sin responsable asignado", "area": "Renault", "tarea": "carga del canalizador en el data lake y la medición para estos servicios", "proyecto": "Renault", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19c1ff794475661d", "fecha_req": "2026-02-02T20:07:32.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Actualización del tablero de molinos para sumar nuevos indicadores", "proyecto": "tablero de molinos", "tipo": "Nuevos KPIs", "criticidad": "Sin clasificar", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19b27c0204724871", "fecha_req": "2025-12-16T15:20:38.000Z", "solicitante": "Gisela Falcon", "responsable": "Sin responsable asignado", "area": "Intralog", "tarea": "Requerimiento de tablero del servicio de Intralog Cheeky (directa e inversa estándar), similar al tablero de shipnow, con foco en SLA.", "proyecto": "Intralog Cheeky", "tipo": "Armado de Tableros", "criticidad": "Alta", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19b04aab63873a79", "fecha_req": "2025-12-09T19:50:54.000Z", "solicitante": "Eduardo Alves Dacunha", "responsable": "Sin responsable asignado", "area": "WH-Ave", "tarea": "Requerimiento tablero BI WH-Ave", "proyecto": "tablero BI WH-Ave", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": "2025-12-02", "fecha_cierre": null}, {"id": "REQ-19b0486d8fd8d747", "fecha_req": "2025-12-09T19:11:44.000Z", "solicitante": "Eduardo Alves Dacunha", "responsable": "Sin responsable asignado", "area": "WH-Ave", "tarea": "Requerimiento tablero BI WH-Ave", "proyecto": "", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": "2025-12-02", "fecha_cierre": null}, {"id": "REQ-19b03779a3eaf9b0", "fecha_req": "2025-12-09T14:15:22.000Z", "solicitante": "Gisela Falcon", "responsable": "Sin responsable asignado", "area": "Shipnow", "tarea": "Requerimiento de tablero del servicio de Shipnow (directa e inversa estándar), similar al tablero Decathlon", "proyecto": "Ship Now", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19b0331b6bad2557", "fecha_req": "2025-12-09T12:59:02.000Z", "solicitante": "Celina Villar", "responsable": "Sin responsable asignado", "area": "Mercedes Benz", "tarea": "Requerimiento de tablero del servicio de Mercedes Benz (directa estándar) para distribución de autopartes desde el centro logístico", "proyecto": "", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19ae582fd13fee02", "fecha_req": "2025-12-03T18:39:18.000Z", "solicitante": "Eduardo Alves Dacunha", "responsable": "Sin responsable asignado", "area": "WH-Ave", "tarea": "Confirmación de disponibilidad para generar convocatoria de Google Meet sobre requerimiento de tablero BI", "proyecto": "tablero BI WH-Ave", "tipo": "Armado de Tableros", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": "2025-12-02", "fecha_cierre": null}, {"id": "REQ-19adfee85d1f834e", "fecha_req": "2025-12-02T16:39:01.000Z", "solicitante": "Eduardo Alves Dacunha", "responsable": "Sin responsable asignado", "area": "WH-Ave", "tarea": "Confirmar disponibilidad para generar una convocatoria de Google Meet sobre el requerimiento de tablero BI WH-Ave", "proyecto": "tablero BI WH-Ave", "tipo": "Armado de Tableros", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": "2025-12-02", "fecha_cierre": null}, {"id": "REQ-19ad9cde9db56017", "fecha_req": "2025-12-01T12:05:41.000Z", "solicitante": "Eduardo Alves Dacunha", "responsable": "Sin responsable asignado", "area": "WH-Ave", "tarea": "Confirmar disponibilidad para generar convocatoria de Google Meet sobre requerimiento de tablero BI WH-Ave", "proyecto": "tablero BI WH-Ave", "tipo": "Armado de Tableros", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": "2025-12-02", "fecha_cierre": null}, {"id": "REQ-19a9c26075386651", "fecha_req": "2025-11-19T12:45:17.000Z", "solicitante": "Maria Ines Picasso", "responsable": "Sin responsable asignado", "area": "Supply", "tarea": "Análisis de factibilidad KPI General de SLA Preparación Gráfico de lineas", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Baja", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19a744eb10366268", "fecha_req": "2025-11-11T19:05:06.000Z", "solicitante": "Celina Villar", "responsable": "Sin responsable asignado", "area": "Decathlon", "tarea": "Requerimiento de tablero del servicio de Decathlon (directa estándar) con colectas desde la sucursal de Tortuguitas", "proyecto": "", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19a5f7a412c4bbb9", "fecha_req": "2025-11-07T18:00:43.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Necesitamos que haya un filtro por cliente para poder visualizar a cada uno", "proyecto": "tablero multicliente de carta de documento", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19a273fed920e637", "fecha_req": "2025-10-27T19:57:37.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Pickit Argentina", "tarea": "Adicionar el AP 40044302 a la query existente para la medición de SLA", "proyecto": "Impacto SLA Pickit No Meli - Automático", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-19a07f0418c94021", "fecha_req": "2025-10-21T18:02:22.000Z", "solicitante": "Fatima Avila Gorognano", "responsable": "Sin responsable asignado", "area": "Molinos", "tarea": "Requerimiento de tablero de DIRECTA e INVERSA", "proyecto": "", "tipo": "Armado de Tableros", "criticidad": "Baja", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-199c4294934c1f13", "fecha_req": "2025-10-08T14:10:56.000Z", "solicitante": "Celina Villar", "responsable": "Sin responsable asignado", "area": "Adidas", "tarea": "Requerimiento de tablero de DIRECTA para Adidas", "proyecto": "DIRECTA", "tipo": "Armado de Tableros", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-199818993c8d354d", "fecha_req": "2025-09-25T15:40:55.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Pickit Argentina", "tarea": "Adicionar el AP 40037610 a la Query existente para la medición de SLA del cliente Pickit Argentina", "proyecto": "Impacto SLA Pickit No Meli - Automático", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-1985cb047aeeed5c", "fecha_req": "2025-07-30T18:54:52.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Pickit Argentina", "tarea": "adicionar el AP 40043681 a las ya existentes en la Query para la medición de SLA", "proyecto": "Impacto SLA Pickit No Meli - Automático", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-197ea9360886fdd5", "fecha_req": "2025-07-08T15:06:24.000Z", "solicitante": "Eduardo Alves Dacunha", "responsable": "Sin responsable asignado", "area": "Newsan", "tarea": "Enviar hostname de las computadoras para completar el requerimiento de VPN y conexión remota a EBS", "proyecto": "", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-197417a2d517df4a", "fecha_req": "2025-06-05T19:03:50.000Z", "solicitante": "Micaela Ayelen Paz", "responsable": "Sin responsable asignado", "area": "MailAmericas SRL", "tarea": "armado del tablero operativo correspondiente al ingreso del nuevo cliente MailAmericas SRL", "proyecto": "MAIL AMERICAS", "tipo": "Armado de Tableros", "criticidad": "Sin clasificar", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-196da64e195a23ea", "fecha_req": "2025-05-16T18:47:42.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Pickit Argentina", "tarea": "adicionar el AP 40037608 - 40037609 a las ya existentes en la medición SLA", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-195960dc6fbb8d69", "fecha_req": "2025-03-14T19:12:17.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Pickit Argentina", "tarea": "Adicionar el AP 40042790 a la query existente para la medición de SLA de Pickit No Meli", "proyecto": "Impacto SLA Pickit No Meli", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-1934b24951577a2f", "fecha_req": "2024-11-20T19:55:51.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "adicionar un nuevo envío automático de mail", "proyecto": "", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-191dd6a430e66ad9", "fecha_req": "2024-09-10T19:30:55.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "indicar tiempo estimado para avanzar con el requerimiento y el feedback brindado", "proyecto": "Impacto SLA Pickit Meli - Automático", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Alto", "estado": "En Progreso", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-191be25171368e03", "fecha_req": "2024-09-04T17:46:18.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "consultar avance y solicitar fecha tentativa de puesta en marcha de un requerimiento automático relacionado con impacto SLA Pickit Meli", "proyecto": "Impacto SLA Pickit Meli", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-191b37aa3a221023", "fecha_req": "2024-09-02T16:03:59.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Customer", "tarea": "Realizar pruebas fuera del schedule indicado para verificar cómo llegaría a los destinatarios finales.", "proyecto": "Impacto SLA Pickit Meli - Automático", "tipo": "Automatizaciones Generales", "criticidad": "Baja", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-191b3665efb00120", "fecha_req": "2024-09-02T15:41:50.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Enviar de forma automática un mail con la información de los shipment con impacto en el SLA Pickit Meli", "proyecto": "Impacto SLA Pickit Meli", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-1909cf6151f1222c", "fecha_req": "2024-07-10T14:05:15.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "analizar la incorporación de un nuevo campo en la tabla DW.Fact_Visitas_Retiros_Nuevo", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Baja", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18f073cc3c024cad", "fecha_req": "2024-04-22T19:16:13.000Z", "solicitante": "Ivan Vera", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "indicadores por chofer", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18f0731659cf6e58", "fecha_req": "2024-04-22T19:03:58.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "(sin descripción)", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18f0714356da6f4c", "fecha_req": "2024-04-22T18:32:05.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "(sin descripción)", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18f071351e1b4337", "fecha_req": "2024-04-22T18:30:56.000Z", "solicitante": "Ivan Vera", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "indicadores por chofer", "proyecto": "", "tipo": "Nuevos KPIs", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18f0711a8cb4fd57", "fecha_req": "2024-04-22T18:29:18.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "(sin descripción)", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18e43c3784ec2fac", "fecha_req": "2024-03-15T20:15:56.000Z", "solicitante": "Jaqueline Elizabeth Velazquez", "responsable": "Sin responsable asignado", "area": "Topper", "tarea": "Mostrar el tablero de forma automatizada todos los lunes", "proyecto": "", "tipo": "Automatizaciones Generales", "criticidad": "Media", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18bf86246cdc8a14", "fecha_req": "2023-11-22T18:52:54.000Z", "solicitante": "Ana Mariela Leyes", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "incorporar en el data lake una tabla nueva descargada desde certronic", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-182467eb9a99cd68", "fecha_req": "2022-07-28T20:27:28.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Customer Intelligence", "tarea": "Consulta de novedades sobre un requerimiento previo de nuevas tablas en Azure", "proyecto": "nuevas Tablas en Azure", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Baja", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-181d9859dfaa6cc7", "fecha_req": "2022-07-07T16:36:24.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "Solicitan información y/o validaciones para actualizar Erlang, incluyendo detalle de llamadas, chats, gestiones, email, etc.", "proyecto": "Erlang", "tipo": "Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Medio", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-18120ef3e3f17a74", "fecha_req": "2022-06-01T20:22:33.000Z", "solicitante": "Ariel Calvo", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "incorporación de 3 nuevas tablas en Azure con origen de datos SAP", "proyecto": "", "tipo": "Armado de Bases de Datos para Nuevos KPIs", "criticidad": "Media", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-181002460be63f62", "fecha_req": "2022-05-26T11:33:00.000Z", "solicitante": "Daniel Jose Simosa", "responsable": "Sin responsable asignado", "area": "HSBC", "tarea": "avanzar con las actividades planteadas en la visita con HSBC", "proyecto": "Customer Intelligence", "tipo": "Proyectos Nuevos", "criticidad": "Alta", "esfuerzo": "Alto", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-17f1e057faaebdf6", "fecha_req": "2022-02-21T20:42:26.000Z", "solicitante": "David Ayala", "responsable": "Sin responsable asignado", "area": "Banco MACRO", "tarea": "Acceso a archivos en carpeta compartida", "proyecto": "", "tipo": "Proyectos Nuevos", "criticidad": "Baja", "esfuerzo": "Bajo", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}, {"id": "REQ-17f1d29b1d23c368", "fecha_req": "2022-02-21T16:42:25.000Z", "solicitante": "David Ayala", "responsable": "Sin responsable asignado", "area": "Sin área", "tarea": "(sin descripción)", "proyecto": "", "tipo": "Sin tipo", "criticidad": "Sin clasificar", "esfuerzo": "Sin clasificar", "estado": "Nuevo", "fecha_fin_est": null, "fecha_cierre": null}]</script>
+<script>
+/* ============================================================
+   FUENTE DE DATOS
+   Se lee en vivo del Google Sheet publicado como CSV (pestaña "Requerimientos").
+   Cada vez que se abre la página, hace fetch al CSV público y lo parsea.
+   Si el fetch falla (sin internet, el sheet dejó de estar publicado, CORS, etc.)
+   cae de forma automática al snapshot embebido más abajo, para que la página
+   nunca se rompa del todo.
+   ============================================================ */
+const DATA_SOURCE = {
+  url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRHyqmNFoh2Z2sFTWja2IWmUBvTlqMrAuQpj5sr0mRxBi2oHgd4IMMM5r0zSKZ_DeXXXwH1EHoShehs/pub?gid=1871348079&single=true&output=csv'
+};
+
+function csvVal(row, col){
+  const v = row[col];
+  return (v===undefined || v===null || String(v).trim()==='') ? null : String(v).trim();
+}
+function parseDateStr(v){
+  if(!v) return null;
+  const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+  if(m) return m[1];
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0,10);
+}
+function mapCsvRow(row){
+  return {
+    id: csvVal(row,'ID_Requerimiento'),
+    fecha_req: parseDateStr(csvVal(row,'Fecha_Requerimiento')),
+    solicitante: csvVal(row,'Solicitante') || 'Sin solicitante',
+    responsable: csvVal(row,'Responsable_CI') || 'Sin responsable asignado',
+    area: csvVal(row,'Area_Solicitante') || 'Sin área',
+    tarea: csvVal(row,'Tarea') || '(sin descripción)',
+    proyecto: csvVal(row,'Proyecto') || '',
+    tipo: csvVal(row,'Tipo_Requerimiento') || 'Sin tipo',
+    criticidad: csvVal(row,'Criticidad') || 'Sin clasificar',
+    esfuerzo: csvVal(row,'Esfuerzo') || 'Sin clasificar',
+    estado: csvVal(row,'Estado') || 'Sin estado',
+    fecha_fin_est: parseDateStr(csvVal(row,'Fecha_Fin_Estimada')),
+    fecha_cierre: parseDateStr(csvVal(row,'Fecha_Cierre')),
+  };
+}
+
+async function loadData(){
+  try{
+    const res = await fetch(DATA_SOURCE.url, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const csvText = await res.text();
+    const parsed = Papa.parse(csvText, {header:true, skipEmptyLines:true});
+    const records = parsed.data.map(mapCsvRow).filter(r=>r.id);
+    if(records.length===0) throw new Error('El CSV no devolvió filas con ID_Requerimiento');
+    return {records, source:'remote'};
+  } catch(err){
+    console.error('No se pudo leer el Google Sheet en vivo, usando snapshot local:', err);
+    const embedded = JSON.parse(document.getElementById('data-json').textContent);
+    return {records: embedded, source:'embedded', error: err.message};
+  }
+}
+
+function normalizeName(s){
+  return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+function uniqueSorted(arr){ return [...new Set(arr)].filter(Boolean).sort((a,b)=>a.localeCompare(b,'es')); }
+function escapeAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+function hexToRgba(hex, alpha){
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+}
+
+const CRIT_ORDER = ['Alta','Media','Baja','Sin clasificar'];
+const CRIT_COLOR = { 'Alta':'#dc2626', 'Media':'#d97706', 'Baja':'#059669', 'Sin clasificar':'#64748b' };
+
+const ESF_ORDER = ['Bajo','Medio','Alto','Sin clasificar'];
+
+const COLOR_CYCLE = ['#0891b2','#d97706','#dc2626','#059669','#64748b','#7c3aed','#0d9488','#b45309'];
+function assignColors(values){
+  const map = {};
+  values.forEach((v,i)=> map[v] = COLOR_CYCLE[i % COLOR_CYCLE.length]);
+  return map;
+}
+
+const CRIT_WEIGHT = {'Alta':3,'Media':2,'Baja':1,'Sin clasificar':null};
+const ESF_WEIGHT = {'Bajo':1,'Medio':2,'Alto':3,'Sin clasificar':null};
+
+// Pesos para el indicador de saturación (no admiten null: lo "sin clasificar" pesa como "medio-bajo")
+const CRIT_WEIGHT_NUM = {'Alta':3,'Media':2,'Baja':1,'Sin clasificar':1};
+const ESF_WEIGHT_NUM = {'Bajo':1,'Medio':2,'Alto':3,'Sin clasificar':1};
+const CLOSED_ESTADOS = ['Finalizada','Cerrada','Cerrado'];
+function isOpenEstado(estado){ return !CLOSED_ESTADOS.includes(estado); }
+function taskWeight(r){ return ESF_WEIGHT_NUM[r.esfuerzo] * CRIT_WEIGHT_NUM[r.criticidad]; }
+function cellColor(crit, esf){
+  if(CRIT_WEIGHT[crit]===null || ESF_WEIGHT[esf]===null) return '#64748b'; // sin clasificar -> gris
+  const score = CRIT_WEIGHT[crit] - ESF_WEIGHT[esf];
+  if(score >= 2) return '#059669';       // quick win
+  if(score === 1) return '#0891b2';      // prioridad media-alta
+  if(score === 0) return '#d97706';      // prioridad media
+  if(score === -1) return '#dc2626';     // prioridad baja
+  return '#991b1b';                      // prioridad muy baja
+}
+
+function daysBetween(inicio, fin){
+  if(!inicio) return null;
+  const ini = new Date(inicio+'T00:00:00');
+  const finD = fin ? new Date(fin+'T00:00:00') : new Date();
+  const diff = Math.round((finD - ini) / (1000*60*60*24));
+  return diff >= 0 ? diff : null;
+}
+
+function mondayOf(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const day = d.getDay();
+  const diff = (day===0 ? -6 : 1-day);
+  d.setDate(d.getDate()+diff);
+  return d.toISOString().slice(0,10);
+}
+function periodOf(dateStr){ return evoGranularity==='week' ? mondayOf(dateStr) : dateStr.slice(0,7); }
+function formatPeriodLabel(p){
+  if(evoGranularity==='month'){
+    const [y,m] = p.split('-');
+    const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    return `${meses[parseInt(m,10)-1]} ${y}`;
+  }
+  const d = new Date(p+'T00:00:00');
+  return `Sem ${d.getDate()}/${d.getMonth()+1}`;
+}
+
+let DATA = [];
+let ESTADO_ORDER = [];
+let ESTADO_COLOR = {};
+let evoGranularity = 'month';
+let stackChartInstance = null;
+let evoChartInstance = null;
+let selectedCell = null;     // {crit, esf}
+let selectedPeriod = null;   // {period, estado}
+let selectedResponsable = null;
+let selectedTipoCrit = null; // {tipo, criticidad}
+
+const FILTER_CONFIGS = [
+  {id:'area', field:'area', allLabel:'Todas'},
+  {id:'tipo', field:'tipo', allLabel:'Todos'},
+  {id:'estado', field:'estado', allLabel:'Todos'},
+  {id:'solicitante', field:'solicitante', allLabel:'Todos'},
+];
+const filterState = {};
+FILTER_CONFIGS.forEach(c=> filterState[c.id] = new Set());
+
+function buildMultiSelect(cfg){
+  const values = uniqueSorted(DATA.map(d=>d[cfg.field]));
+  const wrap = document.getElementById(`f-${cfg.id}-wrap`);
+  wrap.innerHTML = `
+    <button type="button" class="msel-btn" id="f-${cfg.id}-btn">${cfg.allLabel}</button>
+    <div class="msel-panel" id="f-${cfg.id}-panel" hidden>
+      <input type="text" class="msel-search" id="f-${cfg.id}-search" placeholder="Buscar...">
+      <div class="msel-actions"><a data-action="all">Seleccionar todos</a><a data-action="none">Limpiar</a></div>
+      <div class="msel-options" id="f-${cfg.id}-options"></div>
+    </div>`;
+  const optionsDiv = document.getElementById(`f-${cfg.id}-options`);
+  optionsDiv.innerHTML = values.map(v=>`
+    <label class="msel-option" data-label="${escapeAttr(v.toLowerCase())}">
+      <input type="checkbox" value="${escapeAttr(v)}"> <span>${v}</span>
+    </label>`).join('') || '<div class="msel-empty">Sin valores</div>';
+
+  const btn = document.getElementById(`f-${cfg.id}-btn`);
+  const panel = document.getElementById(`f-${cfg.id}-panel`);
+  const search = document.getElementById(`f-${cfg.id}-search`);
+
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const isOpen = !panel.hidden;
+    closeAllPanels();
+    panel.hidden = isOpen;
+    if(!panel.hidden) search.focus();
+  });
+  search.addEventListener('input', ()=>{
+    const q = search.value.trim().toLowerCase();
+    optionsDiv.querySelectorAll('.msel-option').forEach(opt=>{
+      opt.style.display = opt.dataset.label.includes(q) ? 'flex' : 'none';
+    });
+  });
+  optionsDiv.addEventListener('change', (e)=>{
+    if(e.target.type !== 'checkbox') return;
+    if(e.target.checked) filterState[cfg.id].add(e.target.value);
+    else filterState[cfg.id].delete(e.target.value);
+    updateFilterButtonLabel(cfg);
+    renderAll();
+  });
+  panel.querySelector('[data-action="all"]').addEventListener('click', (e)=>{
+    e.preventDefault();
+    optionsDiv.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+      if(cb.closest('.msel-option').style.display !== 'none') cb.checked = true;
+      filterState[cfg.id].add(cb.value);
+    });
+    updateFilterButtonLabel(cfg);
+    renderAll();
+  });
+  panel.querySelector('[data-action="none"]').addEventListener('click', (e)=>{
+    e.preventDefault();
+    optionsDiv.querySelectorAll('input[type="checkbox"]').forEach(cb=> cb.checked=false);
+    filterState[cfg.id].clear();
+    updateFilterButtonLabel(cfg);
+    renderAll();
+  });
+}
+function updateFilterButtonLabel(cfg){
+  const btn = document.getElementById(`f-${cfg.id}-btn`);
+  const sel = filterState[cfg.id];
+  if(sel.size===0){ btn.textContent = cfg.allLabel; btn.classList.remove('active'); }
+  else if(sel.size===1){ btn.textContent = [...sel][0]; btn.classList.add('active'); }
+  else { btn.textContent = `${sel.size} seleccionados`; btn.classList.add('active'); }
+}
+function closeAllPanels(){ document.querySelectorAll('.msel-panel').forEach(p=> p.hidden = true); }
+document.addEventListener('click', (e)=>{ if(!e.target.closest('.msel')) closeAllPanels(); });
+
+function getFiltered(){
+  return DATA.filter(d => FILTER_CONFIGS.every(cfg=>{
+    const sel = filterState[cfg.id];
+    return sel.size===0 || sel.has(d[cfg.field]);
+  }));
+}
+
+function renderKPIs(rows){
+  const total = rows.length;
+  const alta = rows.filter(r=>r.criticidad==='Alta').length;
+  const esfAlto = rows.filter(r=>r.esfuerzo==='Alto').length;
+  const sinClasificar = rows.filter(r=>r.criticidad==='Sin clasificar' || r.esfuerzo==='Sin clasificar').length;
+  const nuevos = rows.filter(r=>r.estado==='Nuevo' || r.estado==='Sin estado').length;
+  const duraciones = rows.map(r=>daysBetween(r.fecha_req, r.fecha_cierre)).filter(d=>d!==null);
+  const duracionProm = duraciones.length ? Math.round(duraciones.reduce((a,b)=>a+b,0)/duraciones.length) : null;
+  const pct = total? Math.round((alta/total)*100) : 0;
+
+  const kpis = [
+    {val: total.toLocaleString('es-AR'), lbl:'Requerimientos', color:'var(--text)'},
+    {val: alta.toLocaleString('es-AR')+' ('+pct+'%)', lbl:'Criticidad Alta', color:'var(--rojo)'},
+    {val: esfAlto.toLocaleString('es-AR'), lbl:'Esfuerzo Alto', color:'var(--amarillo)'},
+    {val: sinClasificar.toLocaleString('es-AR'), lbl:'Sin clasificar', color:'var(--gris)'},
+    {val: nuevos.toLocaleString('es-AR'), lbl:'Pendientes de triage', color:'var(--azul)'},
+    {val: duracionProm!==null ? duracionProm+' días' : '—', lbl:'Antigüedad promedio (a hoy)', color:'var(--verde)'},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(k=>`
+    <div class="kpi"><div class="val" style="color:${k.color}">${k.val}</div><div class="lbl">${k.lbl}</div></div>`).join('');
+}
+
+function buildMatrixData(rows){
+  const grid = {};
+  CRIT_ORDER.forEach(c=>{ grid[c] = {}; ESF_ORDER.forEach(e=> grid[c][e]=0); });
+  rows.forEach(r=>{ grid[r.criticidad][r.esfuerzo] += 1; });
+  return grid;
+}
+
+function renderMatrix(rows){
+  const grid = buildMatrixData(rows);
+  const table = document.getElementById('matrix-table');
+
+  let thead = '<thead><tr><th class="rowlabel-h">Criticidad \\ Esfuerzo</th>';
+  ESF_ORDER.forEach(e=>{ thead += `<th>${e}</th>`; });
+  thead += '<th>Total</th></tr></thead>';
+
+  let tbody = '<tbody>';
+  CRIT_ORDER.forEach(crit=>{
+    const rowTotal = ESF_ORDER.reduce((a,e)=> a + grid[crit][e], 0);
+    tbody += `<tr><td class="rowlabel" style="color:${CRIT_COLOR[crit]}">${crit}</td>`;
+    ESF_ORDER.forEach(esf=>{
+      const count = grid[crit][esf];
+      const color = cellColor(crit, esf);
+      const cls = count===0 ? 'cell-btn zero' : 'cell-btn';
+      const bg = count===0 ? '' : hexToRgba(color, 0.85);
+      tbody += `<td><button class="${cls}" style="background:${bg}" data-crit="${escapeAttr(crit)}" data-esf="${escapeAttr(esf)}">${count || ''}</button></td>`;
+    });
+    tbody += `<td class="rowtotal">${rowTotal}</td></tr>`;
+  });
+  tbody += '</tbody>';
+  table.innerHTML = thead + tbody;
+
+  table.querySelectorAll('.cell-btn:not(.zero)').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const crit = btn.dataset.crit, esf = btn.dataset.esf;
+      if(selectedCell && selectedCell.crit===crit && selectedCell.esf===esf) selectedCell = null;
+      else selectedCell = {crit, esf};
+      highlightSelectedCell();
+      renderDrill();
+      renderEvo();
+    });
+  });
+  renderLegend();
+  highlightSelectedCell();
+}
+function highlightSelectedCell(){
+  document.querySelectorAll('.cell-btn').forEach(b=> b.style.outline='');
+  if(!selectedCell) return;
+  document.querySelectorAll(`.cell-btn[data-crit="${CSS.escape(selectedCell.crit)}"][data-esf="${CSS.escape(selectedCell.esf)}"]`)
+    .forEach(b=> b.style.outline = '2px solid #1e293b');
+}
+function renderLegend(){
+  const legend = document.getElementById('legend');
+  const items = [
+    {label:'Quick win (alta prioridad, bajo esfuerzo)', color:'#059669'},
+    {label:'Prioridad media-alta', color:'#0891b2'},
+    {label:'Prioridad media', color:'#d97706'},
+    {label:'Prioridad baja', color:'#dc2626'},
+    {label:'Prioridad muy baja / alto esfuerzo', color:'#991b1b'},
+    {label:'Sin clasificar', color:'#64748b'},
+  ];
+  legend.innerHTML = items.map(i=>`<span><i style="background:${i.color}"></i>${i.label}</span>`).join('');
+}
+
+function renderStackChart(rows){
+  const tipos = uniqueSorted(rows.map(r=>r.tipo));
+  const counts = {};
+  tipos.forEach(t=>{ counts[t] = {}; CRIT_ORDER.forEach(c=> counts[t][c]=0); });
+  rows.forEach(r=>{ if(counts[r.tipo]) counts[r.tipo][r.criticidad] += 1; });
+  const sortedTipos = tipos.sort((a,b)=>{
+    const ta = CRIT_ORDER.reduce((s,c)=>s+counts[a][c],0);
+    const tb = CRIT_ORDER.reduce((s,c)=>s+counts[b][c],0);
+    return tb - ta;
+  });
+  const datasets = CRIT_ORDER.map(crit=>({
+    label: crit,
+    data: sortedTipos.map(t=>counts[t][crit]),
+    backgroundColor: CRIT_COLOR[crit],
+  }));
+  const ctx = document.getElementById('stackChart').getContext('2d');
+  if(stackChartInstance) stackChartInstance.destroy();
+  stackChartInstance = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: sortedTipos, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      scales:{ x:{stacked:true, grid:{color:'#eef1f4'}}, y:{stacked:true, grid:{display:false}} },
+      plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{size:11}} } },
+      onClick: (evt, elements) => {
+        if(!elements.length) return;
+        const el = elements[0];
+        const criticidad = CRIT_ORDER[el.datasetIndex];
+        const tipo = sortedTipos[el.index];
+        if(selectedTipoCrit && selectedTipoCrit.tipo===tipo && selectedTipoCrit.criticidad===criticidad){
+          selectedTipoCrit = null;
+        } else {
+          selectedTipoCrit = {tipo, criticidad};
+        }
+        renderDrill();
+      }
+    }
+  });
+}
+
+function renderTeamTable(rows){
+  const responsables = uniqueSorted(rows.map(r=>r.responsable));
+  const stats = {};
+  responsables.forEach(s=>{ stats[s] = {total:0, enProgreso:0, durations:[], weight:0}; });
+  rows.forEach(r=>{
+    const s = stats[r.responsable];
+    if(!s) return;
+    s.total += 1;
+    if(r.estado === 'En Progreso') s.enProgreso += 1;
+    if(isOpenEstado(r.estado)) s.weight += taskWeight(r);
+    const dur = daysBetween(r.fecha_req, r.fecha_cierre);
+    if(dur!==null) s.durations.push(dur);
+  });
+
+  const maxWeight = Math.max(1, ...responsables.map(s=>stats[s].weight));
+  responsables.forEach(s=>{
+    stats[s].saturacion = Math.round((stats[s].weight / maxWeight) * 100);
+  });
+
+  const sorted = responsables.sort((a,b)=> stats[b].weight - stats[a].weight);
+
+  const table = document.getElementById('team-table');
+  let thead = `<thead><tr>
+    <th class="rowlabel-h">Responsable CI</th>
+    <th>Total</th>
+    <th>En progreso</th>
+    <th>Antigüedad prom.</th>
+    <th>Saturación</th>
+  </tr></thead>`;
+  let tbody = '<tbody>';
+  sorted.forEach(s=>{
+    const st = stats[s];
+    const avg = st.durations.length ? Math.round(st.durations.reduce((a,b)=>a+b,0)/st.durations.length) : null;
+    const isSelected = selectedResponsable === s;
+    const satColor = st.saturacion >= 70 ? '#dc2626' : st.saturacion >= 40 ? '#d97706' : '#059669';
+    tbody += `<tr>
+      <td class="rowlabel"><button class="team-row-btn ${isSelected?'selected':''}" data-responsable="${escapeAttr(s)}">${s}</button></td>
+      <td class="rowtotal">${st.total}</td>
+      <td class="rowtotal">${st.enProgreso}</td>
+      <td class="rowtotal">${avg!==null ? avg+'d' : '—'}</td>
+      <td style="padding:8px 10px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:8px;background:#eef1f4;border-radius:4px;overflow:hidden;min-width:60px;">
+            <div style="width:${st.saturacion}%;height:100%;background:${satColor};"></div>
+          </div>
+          <span style="font-size:12px;font-weight:700;color:${satColor};min-width:34px;text-align:right;">${st.saturacion}%</span>
+        </div>
+      </td>
+    </tr>`;
+  });
+  tbody += '</tbody>';
+  table.innerHTML = thead + tbody;
+
+  table.querySelectorAll('.team-row-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const name = btn.dataset.responsable;
+      selectedResponsable = (selectedResponsable===name) ? null : name;
+      renderTeamTable(getFiltered());
+      renderDrill();
+    });
+  });
+}
+
+function renderDrill(){
+  const drill = document.getElementById('drill');
+  if(!selectedCell && !selectedPeriod && !selectedResponsable && !selectedTipoCrit){
+    drill.innerHTML = '<div class="empty">Elegí una celda de la matriz, una barra del evolutivo, un tipo de requerimiento o un responsable para ver el detalle.</div>';
+    return;
+  }
+  let rows = getFiltered();
+  if(selectedCell) rows = rows.filter(r=>r.criticidad===selectedCell.crit && r.esfuerzo===selectedCell.esf);
+  if(selectedPeriod) rows = rows.filter(r=> r.fecha_req && periodOf(r.fecha_req)===selectedPeriod.period && r.estado===selectedPeriod.estado);
+  if(selectedResponsable) rows = rows.filter(r=> r.responsable===selectedResponsable);
+  if(selectedTipoCrit) rows = rows.filter(r=> r.tipo===selectedTipoCrit.tipo && r.criticidad===selectedTipoCrit.criticidad);
+
+  if(rows.length===0){
+    drill.innerHTML = '<div class="empty">No hay requerimientos para esta combinación.</div>';
+    return;
+  }
+  const titleParts = [];
+  if(selectedCell) titleParts.push(`${selectedCell.crit} · ${selectedCell.esf}`);
+  if(selectedPeriod) titleParts.push(`${formatPeriodLabel(selectedPeriod.period)} · ${selectedPeriod.estado}`);
+  if(selectedResponsable) titleParts.push(`Responsable: ${selectedResponsable}`);
+  if(selectedTipoCrit) titleParts.push(`${selectedTipoCrit.tipo} · ${selectedTipoCrit.criticidad}`);
+  const title = titleParts.join('  —  ');
+
+  const items = rows.map(r=>{
+    const dur = daysBetween(r.fecha_req, r.fecha_cierre);
+    return `
+    <div class="drill-item">
+      <div class="proj">${r.tarea}${r.criticidad!=='Sin clasificar' ? `<span class="badge" style="background:${CRIT_COLOR[r.criticidad]}">${r.criticidad}</span>` : ''}<span class="badge" style="background:${ESTADO_COLOR[r.estado] || '#64748b'}">${r.estado}</span></div>
+      <div class="meta">${r.proyecto ? r.proyecto+' · ' : ''}${r.area} · Esfuerzo: ${r.esfuerzo} · Solicitante: ${r.solicitante}${r.fecha_req ? ' · Recibido: '+r.fecha_req : ''}${dur!==null ? ' · Antigüedad: '+dur+' días'+(!r.fecha_cierre?' (a hoy)':'') : ''}</div>
+    </div>`;
+  }).join('');
+  drill.innerHTML = `<div id="drill-title">${title}</div><div id="drill-count">${rows.length} registro(s)</div><div id="drill-list">${items}</div>`;
+}
+
+function getSelectionRows(){
+  const rows = getFiltered();
+  if(!selectedCell) return rows;
+  return rows.filter(r=>r.criticidad===selectedCell.crit && r.esfuerzo===selectedCell.esf);
+}
+
+function renderEvo(){
+  const rows = getSelectionRows();
+  const buckets = {};
+  let sinFecha = 0;
+  rows.forEach(r=>{
+    if(!r.fecha_req){ sinFecha++; return; }
+    const p = periodOf(r.fecha_req);
+    if(!buckets[p]) buckets[p] = {};
+    buckets[p][r.estado] = (buckets[p][r.estado]||0) + 1;
+  });
+  const periods = Object.keys(buckets).sort();
+
+  const sub = document.getElementById('evo-sub');
+  sub.textContent = sinFecha>0
+    ? `Requerimientos recibidos, segmentados por Estado (${sinFecha} sin fecha cargada, no se grafican)`
+    : 'Requerimientos recibidos, segmentados por Estado';
+
+  const selDiv = document.getElementById('evo-selection');
+  if(selectedCell){
+    selDiv.style.display = 'block';
+    document.getElementById('evo-selection-text').textContent = `Mostrando: ${selectedCell.crit} · ${selectedCell.esf}`;
+  } else { selDiv.style.display = 'none'; }
+
+  const datasets = ESTADO_ORDER.map(estado=>({
+    label: estado,
+    data: periods.map(p=> buckets[p][estado] || 0),
+    backgroundColor: ESTADO_COLOR[estado],
+  }));
+
+  const ctx = document.getElementById('evoChart').getContext('2d');
+  if(evoChartInstance) evoChartInstance.destroy();
+  evoChartInstance = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: periods.map(formatPeriodLabel), datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{ x:{stacked:true, grid:{display:false}}, y:{stacked:true, beginAtZero:true, ticks:{precision:0}, grid:{color:'#eef1f4'}} },
+      plugins:{ legend:{ position:'bottom', labels:{boxWidth:10, font:{size:11}} } },
+      onClick: (evt, elements) => {
+        if(!elements.length) return;
+        const el = elements[0];
+        const estado = ESTADO_ORDER[el.datasetIndex];
+        const period = periods[el.index];
+        togglePeriodSelection(period, estado);
+      }
+    }
+  });
+  updateEvoPeriodIndicator();
+}
+function togglePeriodSelection(period, estado){
+  if(selectedPeriod && selectedPeriod.period===period && selectedPeriod.estado===estado) selectedPeriod = null;
+  else selectedPeriod = {period, estado};
+  updateEvoPeriodIndicator();
+  renderDrill();
+}
+function updateEvoPeriodIndicator(){
+  const div = document.getElementById('evo-period-info');
+  if(selectedPeriod){
+    div.style.display = 'block';
+    document.getElementById('evo-period-text').textContent = `Filtrando detalle por: ${formatPeriodLabel(selectedPeriod.period)} · ${selectedPeriod.estado}`;
+  } else { div.style.display = 'none'; }
+}
+
+function renderAll(){
+  selectedCell = null;
+  selectedPeriod = null;
+  selectedResponsable = null;
+  selectedTipoCrit = null;
+  const rows = getFiltered();
+  renderKPIs(rows);
+  renderMatrix(rows);
+  renderStackChart(rows);
+  renderTeamTable(rows);
+  renderDrill();
+  renderEvo();
+}
+
+(async function init(){
+  const loadResult = await loadData();
+  DATA = loadResult.records;
+
+  const rawEstados = uniqueSorted(DATA.map(d=>d.estado));
+  const known = ['Nuevo','En Progreso','En Revisión','Bloqueado','Finalizado','Cerrado'];
+  ESTADO_ORDER = [
+    ...known.filter(k=>rawEstados.includes(k)),
+    ...rawEstados.filter(e=>!known.includes(e) && e!=='Sin estado'),
+    ...(rawEstados.includes('Sin estado') ? ['Sin estado'] : [])
+  ];
+  ESTADO_COLOR = assignColors(ESTADO_ORDER);
+
+  const sourceNote = document.getElementById('source-note');
+  if(loadResult.source === 'remote'){
+    sourceNote.textContent = `${DATA.length} requerimientos · datos en vivo desde el Google Sheet (última carga: ${new Date().toLocaleString('es-AR')})`;
+  } else {
+    sourceNote.textContent = `${DATA.length} requerimientos · no se pudo leer el Google Sheet en vivo (${loadResult.error}), mostrando snapshot local`;
+    sourceNote.style.color = 'var(--rojo)';
+  }
+
+  FILTER_CONFIGS.forEach(buildMultiSelect);
+
+  document.getElementById('gran-toggle').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    evoGranularity = btn.dataset.gran;
+    document.querySelectorAll('#gran-toggle button').forEach(b=> b.classList.toggle('active', b===btn));
+    selectedPeriod = null;
+    renderEvo();
+    renderDrill();
+  });
+  document.getElementById('evo-period-clear').addEventListener('click', (e)=>{
+    e.preventDefault(); selectedPeriod = null; updateEvoPeriodIndicator(); renderDrill();
+  });
+  document.getElementById('evo-clear').addEventListener('click', (e)=>{
+    e.preventDefault(); selectedCell = null; highlightSelectedCell(); renderDrill(); renderEvo();
+  });
+  document.getElementById('btn-reset').addEventListener('click', ()=>{
+    FILTER_CONFIGS.forEach(cfg=>{
+      filterState[cfg.id].clear();
+      document.querySelectorAll(`#f-${cfg.id}-options input[type="checkbox"]`).forEach(cb=> cb.checked=false);
+      updateFilterButtonLabel(cfg);
+    });
+    renderAll();
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
