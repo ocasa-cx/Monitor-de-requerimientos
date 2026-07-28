@@ -7,20 +7,19 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <style>
   :root{
-    --azul:#0891b2;
+    --azul:#2563eb;
     --rojo:#dc2626;
-    --rojo-osc:#991b1b;
     --amarillo:#d97706;
-    --verde:#059669;
+    --verde:#15803d;
     --gris:#64748b;
-    --bg:#f4f6f8;
+    --bg:#f5f6f8;
     --card:#ffffff;
-    --border:#e2e6ea;
+    --border:#e5e8ec;
     --text:#1e293b;
     --text-mut:#64748b;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:Arial, Helvetica, sans-serif;background:var(--bg);color:var(--text);}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
   .wrap{max-width:1360px;margin:0 auto;padding:24px 28px 60px;}
 
   header{margin-bottom:20px;}
@@ -29,11 +28,13 @@
   #source-note{font-size:11.5px;color:var(--text-mut);margin-top:6px;}
 
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
-  .kpi{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:14px 16px;}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px;box-shadow:0 1px 2px rgba(15,23,42,.04);}
   .kpi .val{font-size:24px;font-weight:700;line-height:1.1;}
   .kpi .lbl{font-size:11px;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;margin-top:4px;}
 
-  .filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px 14px;align-items:flex-end;}
+  .filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;align-items:flex-end;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+  .filters .search-field input{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:4px;height:34px;min-width:220px;}
+  .filters .search-field input:focus{outline:none;border-color:var(--azul);}
   .filters label{font-size:11px;color:var(--text-mut);text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:3px;}
   .filters button.reset-btn{background:var(--gris);color:#fff;border:none;border-radius:4px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:inherit;height:34px;}
   .filters button.reset-btn:hover{opacity:.9;}
@@ -56,7 +57,7 @@
   .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start;}
   @media (max-width:1050px){.grid{grid-template-columns:1fr;}}
 
-  .card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:18px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04);}
   .card h2{font-size:14px;margin:0 0 4px;font-weight:700;}
   .card .sub{font-size:12px;color:var(--text-mut);margin:0 0 14px;}
 
@@ -84,7 +85,7 @@
   .drill-item:last-child{border-bottom:none;}
   .drill-item .proj{font-weight:700;margin-bottom:2px;}
   .drill-item .meta{color:var(--text-mut);font-size:11.5px;}
-  .badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10.5px;font-weight:700;color:#fff;margin-left:6px;}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:700;margin-left:6px;}
   #drill-list{max-height:520px;overflow-y:auto;padding-right:4px;}
   #drill-title{font-size:13px;font-weight:700;margin-bottom:2px;}
   #drill-count{font-size:12px;color:var(--text-mut);margin-bottom:12px;}
@@ -111,16 +112,18 @@
 
   <div class="filters">
     <div><label>Área solicitante</label><div class="msel" id="f-area-wrap"></div></div>
+    <div><label>Proyecto</label><div class="msel" id="f-proyecto-wrap"></div></div>
     <div><label>Tipo de requerimiento</label><div class="msel" id="f-tipo-wrap"></div></div>
     <div><label>Estado</label><div class="msel" id="f-estado-wrap"></div></div>
     <div><label>Solicitante</label><div class="msel" id="f-solicitante-wrap"></div></div>
+    <div class="search-field"><label>Buscar en tarea</label><input type="text" id="f-tarea-search" placeholder="Ej: SLA, tablero, canalizador..."></div>
     <button class="reset-btn" id="btn-reset">Limpiar filtros</button>
   </div>
 
   <div class="grid">
     <div class="card">
       <h2>Matriz de prioridad</h2>
-      <p class="sub">Criticidad × Esfuerzo. El color indica zona de prioridad (verde = quick win, rojo = baja prioridad / alto esfuerzo). Click en una celda para ver el detalle.</p>
+      <p class="sub">Criticidad × Esfuerzo. El color combina ambas dimensiones: verde = criticidad y esfuerzo bajos, amarillo = medios, rojo = altos. Click en una celda para ver el detalle.</p>
       <div style="overflow-x:auto;">
         <table class="matrix" id="matrix-table"></table>
       </div>
@@ -245,14 +248,26 @@ function hexToRgba(hex, alpha){
 }
 
 const CRIT_ORDER = ['Alta','Media','Baja','Sin clasificar'];
-const CRIT_COLOR = { 'Alta':'#dc2626', 'Media':'#d97706', 'Baja':'#059669', 'Sin clasificar':'#64748b' };
+const CRIT_COLOR = { 'Alta':'#dc2626', 'Media':'#d97706', 'Baja':'#15803d', 'Sin clasificar':'#64748b' };
 
 const ESF_ORDER = ['Bajo','Medio','Alto','Sin clasificar'];
 
-const COLOR_CYCLE = ['#0891b2','#d97706','#dc2626','#059669','#64748b','#7c3aed','#0d9488','#b45309'];
+/* Colores de estado por semántica, no por orden de aparición:
+   finalizado -> verde · en curso -> amarillo · bloqueado -> rojo · sin iniciar -> gris */
+const ESTADO_SEMANTIC_COLOR = { verde:'#15803d', amarillo:'#d97706', rojo:'#dc2626', gris:'#64748b' };
+const ESTADO_BUCKET = {
+  'finalizado':'verde', 'finalizada':'verde', 'cerrado':'verde', 'cerrada':'verde', 'completado':'verde', 'completada':'verde',
+  'en progreso':'amarillo', 'en curso':'amarillo', 'en revision':'amarillo', 'en revisión':'amarillo',
+  'bloqueado':'rojo', 'bloqueada':'rojo', 'detenido':'rojo', 'detenida':'rojo',
+  'nuevo':'gris', 'nueva':'gris', 'sin iniciar':'gris', 'sin estado':'gris', 'pendiente':'gris',
+};
+function estadoColor(estado){
+  const bucket = ESTADO_BUCKET[normalizeName(estado)] || 'gris';
+  return ESTADO_SEMANTIC_COLOR[bucket];
+}
 function assignColors(values){
   const map = {};
-  values.forEach((v,i)=> map[v] = COLOR_CYCLE[i % COLOR_CYCLE.length]);
+  values.forEach(v=> map[v] = estadoColor(v));
   return map;
 }
 
@@ -267,12 +282,11 @@ function isOpenEstado(estado){ return !CLOSED_ESTADOS.includes(estado); }
 function taskWeight(r){ return ESF_WEIGHT_NUM[r.esfuerzo] * CRIT_WEIGHT_NUM[r.criticidad]; }
 function cellColor(crit, esf){
   if(CRIT_WEIGHT[crit]===null || ESF_WEIGHT[esf]===null) return '#64748b'; // sin clasificar -> gris
-  const score = CRIT_WEIGHT[crit] - ESF_WEIGHT[esf];
-  if(score >= 2) return '#059669';       // quick win
-  if(score === 1) return '#0891b2';      // prioridad media-alta
-  if(score === 0) return '#d97706';      // prioridad media
-  if(score === -1) return '#dc2626';     // prioridad baja
-  return '#991b1b';                      // prioridad muy baja
+  // Nivel combinado de Criticidad × Esfuerzo (1=bajo/baja, 2=medio/media, 3=alto/alta)
+  const avg = (CRIT_WEIGHT[crit] + ESF_WEIGHT[esf]) / 2;
+  if(avg >= 2.5) return '#dc2626';   // ambos altos -> rojo
+  if(avg >= 1.5) return '#d97706';   // combinacion media -> amarillo
+  return '#15803d';                  // ambos bajos -> verde
 }
 
 function daysBetween(inicio, fin){
@@ -314,12 +328,14 @@ let selectedTipoCrit = null; // {tipo, criticidad}
 
 const FILTER_CONFIGS = [
   {id:'area', field:'area', allLabel:'Todas'},
+  {id:'proyecto', field:'proyecto', allLabel:'Todos'},
   {id:'tipo', field:'tipo', allLabel:'Todos'},
   {id:'estado', field:'estado', allLabel:'Todos'},
   {id:'solicitante', field:'solicitante', allLabel:'Todos'},
 ];
 const filterState = {};
 FILTER_CONFIGS.forEach(c=> filterState[c.id] = new Set());
+let searchTarea = '';
 
 function buildMultiSelect(cfg){
   const values = uniqueSorted(DATA.map(d=>d[cfg.field]));
@@ -392,7 +408,7 @@ function getFiltered(){
   return DATA.filter(d => FILTER_CONFIGS.every(cfg=>{
     const sel = filterState[cfg.id];
     return sel.size===0 || sel.has(d[cfg.field]);
-  }));
+  }) && (searchTarea==='' || normalizeName(d.tarea).includes(searchTarea)));
 }
 
 function renderKPIs(rows){
@@ -470,11 +486,9 @@ function highlightSelectedCell(){
 function renderLegend(){
   const legend = document.getElementById('legend');
   const items = [
-    {label:'Quick win (alta prioridad, bajo esfuerzo)', color:'#059669'},
-    {label:'Prioridad media-alta', color:'#0891b2'},
-    {label:'Prioridad media', color:'#d97706'},
-    {label:'Prioridad baja', color:'#dc2626'},
-    {label:'Prioridad muy baja / alto esfuerzo', color:'#991b1b'},
+    {label:'Criticidad y esfuerzo bajos', color:'#15803d'},
+    {label:'Criticidad y esfuerzo medios', color:'#d97706'},
+    {label:'Criticidad y esfuerzo altos', color:'#dc2626'},
     {label:'Sin clasificar', color:'#64748b'},
   ];
   legend.innerHTML = items.map(i=>`<span><i style="background:${i.color}"></i>${i.label}</span>`).join('');
@@ -554,7 +568,7 @@ function renderTeamTable(rows){
     const st = stats[s];
     const avg = st.durations.length ? Math.round(st.durations.reduce((a,b)=>a+b,0)/st.durations.length) : null;
     const isSelected = selectedResponsable === s;
-    const satColor = st.saturacion >= 70 ? '#dc2626' : st.saturacion >= 40 ? '#d97706' : '#059669';
+    const satColor = st.saturacion >= 70 ? '#dc2626' : st.saturacion >= 40 ? '#d97706' : '#15803d';
     tbody += `<tr>
       <td class="rowlabel"><button class="team-row-btn ${isSelected?'selected':''}" data-responsable="${escapeAttr(s)}">${s}</button></td>
       <td class="rowtotal">${st.total}</td>
@@ -610,7 +624,7 @@ function renderDrill(){
     const dur = daysBetween(r.fecha_req, r.fecha_cierre);
     return `
     <div class="drill-item">
-      <div class="proj">${r.tarea}${r.criticidad!=='Sin clasificar' ? `<span class="badge" style="background:${CRIT_COLOR[r.criticidad]}">${r.criticidad}</span>` : ''}<span class="badge" style="background:${ESTADO_COLOR[r.estado] || '#64748b'}">${r.estado}</span></div>
+      <div class="proj">${r.tarea}${r.criticidad!=='Sin clasificar' ? `<span class="badge" style="background:${hexToRgba(CRIT_COLOR[r.criticidad],0.14)};color:${CRIT_COLOR[r.criticidad]}">${r.criticidad}</span>` : ''}<span class="badge" style="background:${hexToRgba(ESTADO_COLOR[r.estado] || '#64748b',0.14)};color:${ESTADO_COLOR[r.estado] || '#64748b'}">${r.estado}</span></div>
       <div class="meta">${r.proyecto ? r.proyecto+' · ' : ''}${r.area} · Esfuerzo: ${r.esfuerzo} · Solicitante: ${r.solicitante}${r.fecha_req ? ' · Recibido: '+r.fecha_req : ''}${dur!==null ? ' · Antigüedad: '+dur+' días'+(!r.fecha_cierre?' (a hoy)':'') : ''}</div>
     </div>`;
   }).join('');
@@ -703,6 +717,7 @@ function renderAll(){
 (async function init(){
   const loadResult = await loadData();
   DATA = loadResult.records;
+  DATA.forEach(d=>{ if(!d.proyecto) d.proyecto = 'Sin proyecto'; });
 
   const rawEstados = uniqueSorted(DATA.map(d=>d.estado));
   const known = ['Nuevo','En Progreso','En Revisión','Bloqueado','Finalizado','Cerrado'];
@@ -738,12 +753,18 @@ function renderAll(){
   document.getElementById('evo-clear').addEventListener('click', (e)=>{
     e.preventDefault(); selectedCell = null; highlightSelectedCell(); renderDrill(); renderEvo();
   });
+  document.getElementById('f-tarea-search').addEventListener('input', (e)=>{
+    searchTarea = normalizeName(e.target.value.trim());
+    renderAll();
+  });
   document.getElementById('btn-reset').addEventListener('click', ()=>{
     FILTER_CONFIGS.forEach(cfg=>{
       filterState[cfg.id].clear();
       document.querySelectorAll(`#f-${cfg.id}-options input[type="checkbox"]`).forEach(cb=> cb.checked=false);
       updateFilterButtonLabel(cfg);
     });
+    searchTarea = '';
+    document.getElementById('f-tarea-search').value = '';
     renderAll();
   });
 
