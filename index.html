@@ -147,7 +147,7 @@
 
   <div class="card" style="margin-top:16px;">
     <h2>Por responsable CI</h2>
-    <p class="sub">Requerimientos por responsable del equipo de CI. La Saturación es relativa: 100% = el responsable con mayor carga ponderada (Esfuerzo × Criticidad) entre los tareas abiertas; el resto se escala contra ese máximo. Click en una fila para ver el detalle.</p>
+    <p class="sub">Requerimientos por responsable del equipo de CI, desglosados por estado. Click en una fila para ver el detalle.</p>
     <div style="overflow-x:auto;">
       <table class="matrix" id="team-table"></table>
     </div>
@@ -271,6 +271,12 @@ function assignColors(values){
   return map;
 }
 
+const BUCKET_LABEL = { verde:'Finalizado', amarillo:'En Progreso', gris:'Sin iniciar', rojo:'Bloqueado' };
+const BUCKET_ORDER = ['verde','amarillo','gris','rojo'];
+function estadoBucket(estado){
+  return ESTADO_BUCKET[normalizeName(estado)] || 'gris';
+}
+
 const CRIT_WEIGHT = {'Alta':3,'Media':2,'Baja':1,'Sin clasificar':null};
 const ESF_WEIGHT = {'Bajo':1,'Medio':2,'Alto':3,'Sin clasificar':null};
 
@@ -278,8 +284,13 @@ const ESF_WEIGHT = {'Bajo':1,'Medio':2,'Alto':3,'Sin clasificar':null};
 const CRIT_WEIGHT_NUM = {'Alta':3,'Media':2,'Baja':1,'Sin clasificar':1};
 const ESF_WEIGHT_NUM = {'Bajo':1,'Medio':2,'Alto':3,'Sin clasificar':1};
 const CLOSED_ESTADOS = ['Finalizada','Cerrada','Cerrado'];
-function isOpenEstado(estado){ return !CLOSED_ESTADOS.includes(estado); }
-function taskWeight(r){ return ESF_WEIGHT_NUM[r.esfuerzo] * CRIT_WEIGHT_NUM[r.criticidad]; }
+function isOpenEstado(estado){ return estadoBucket(estado) !== 'verde'; }
+function taskWeight(r){
+  // Defensivo: si el valor de criticidad/esfuerzo no está clasificado, se pondera como "Sin clasificar" (1) en vez de romper el cálculo con NaN.
+  const critW = (r.criticidad in CRIT_WEIGHT_NUM) ? CRIT_WEIGHT_NUM[r.criticidad] : 1;
+  const esfW = (r.esfuerzo in ESF_WEIGHT_NUM) ? ESF_WEIGHT_NUM[r.esfuerzo] : 1;
+  return esfW * critW;
+}
 function cellColor(crit, esf){
   if(CRIT_WEIGHT[crit]===null || ESF_WEIGHT[esf]===null) return '#64748b'; // sin clasificar -> gris
   // Nivel combinado de Criticidad × Esfuerzo (1=bajo/baja, 2=medio/media, 3=alto/alta)
@@ -537,20 +548,17 @@ function renderStackChart(rows){
 function renderTeamTable(rows){
   const responsables = uniqueSorted(rows.map(r=>r.responsable));
   const stats = {};
-  responsables.forEach(s=>{ stats[s] = {total:0, enProgreso:0, durations:[], weight:0}; });
+  responsables.forEach(s=>{
+    stats[s] = {total:0, verde:0, amarillo:0, gris:0, rojo:0, durations:[], weight:0};
+  });
   rows.forEach(r=>{
     const s = stats[r.responsable];
     if(!s) return;
     s.total += 1;
-    if(r.estado === 'En Progreso') s.enProgreso += 1;
+    s[estadoBucket(r.estado)] += 1;
     if(isOpenEstado(r.estado)) s.weight += taskWeight(r);
     const dur = daysBetween(r.fecha_req, r.fecha_cierre);
     if(dur!==null) s.durations.push(dur);
-  });
-
-  const maxWeight = Math.max(1, ...responsables.map(s=>stats[s].weight));
-  responsables.forEach(s=>{
-    stats[s].saturacion = Math.round((stats[s].weight / maxWeight) * 100);
   });
 
   const sorted = responsables.sort((a,b)=> stats[b].weight - stats[a].weight);
@@ -559,29 +567,25 @@ function renderTeamTable(rows){
   let thead = `<thead><tr>
     <th class="rowlabel-h">Responsable CI</th>
     <th>Total</th>
-    <th>En progreso</th>
+    <th>Finalizado</th>
+    <th>En Progreso</th>
+    <th>Sin iniciar</th>
+    <th>Bloqueado</th>
     <th>Antigüedad prom.</th>
-    <th>Saturación</th>
   </tr></thead>`;
   let tbody = '<tbody>';
   sorted.forEach(s=>{
     const st = stats[s];
     const avg = st.durations.length ? Math.round(st.durations.reduce((a,b)=>a+b,0)/st.durations.length) : null;
     const isSelected = selectedResponsable === s;
-    const satColor = st.saturacion >= 70 ? '#dc2626' : st.saturacion >= 40 ? '#d97706' : '#15803d';
     tbody += `<tr>
       <td class="rowlabel"><button class="team-row-btn ${isSelected?'selected':''}" data-responsable="${escapeAttr(s)}">${s}</button></td>
       <td class="rowtotal">${st.total}</td>
-      <td class="rowtotal">${st.enProgreso}</td>
+      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.verde}">${st.verde}</td>
+      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.amarillo}">${st.amarillo}</td>
+      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.gris}">${st.gris}</td>
+      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.rojo}">${st.rojo}</td>
       <td class="rowtotal">${avg!==null ? avg+'d' : '—'}</td>
-      <td style="padding:8px 10px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="flex:1;height:8px;background:#eef1f4;border-radius:4px;overflow:hidden;min-width:60px;">
-            <div style="width:${st.saturacion}%;height:100%;background:${satColor};"></div>
-          </div>
-          <span style="font-size:12px;font-weight:700;color:${satColor};min-width:34px;text-align:right;">${st.saturacion}%</span>
-        </div>
-      </td>
     </tr>`;
   });
   tbody += '</tbody>';
