@@ -79,6 +79,11 @@
   .team-row-btn{font-family:inherit;font-size:12.5px;font-weight:600;background:none;border:none;padding:8px 0;cursor:pointer;color:var(--text);text-align:left;}
   .team-row-btn:hover{color:var(--azul);}
   .team-row-btn.selected{color:var(--azul);text-decoration:underline;}
+  .team-cell-btn{font-family:inherit;font-size:12.5px;font-weight:700;background:none;border:none;padding:8px 4px;cursor:pointer;width:100%;border-radius:4px;}
+  .team-cell-btn:hover{background:#f4f6f8;}
+  .team-cell-btn.zero{cursor:default;font-weight:400;color:#b7c0ca !important;}
+  .team-cell-btn.zero:hover{background:none;}
+  .team-cell-btn.selected{background:#eef2ff;outline:2px solid #1e293b;outline-offset:-2px;}
 
   #drill .empty{color:var(--text-mut);font-size:13px;padding:20px 0;text-align:center;}
   .drill-item{border-bottom:1px solid var(--border);padding:9px 0;font-size:12.5px;}
@@ -335,6 +340,7 @@ let evoChartInstance = null;
 let selectedCell = null;     // {crit, esf}
 let selectedPeriod = null;   // {period, estado}
 let selectedResponsable = null;
+let selectedResponsableEstado = null; // {responsable, bucket}
 let selectedTipoCrit = null; // {tipo, criticidad}
 
 const FILTER_CONFIGS = [
@@ -578,13 +584,18 @@ function renderTeamTable(rows){
     const st = stats[s];
     const avg = st.durations.length ? Math.round(st.durations.reduce((a,b)=>a+b,0)/st.durations.length) : null;
     const isSelected = selectedResponsable === s;
+    const cellBtn = (bucket) => {
+      const count = st[bucket];
+      const cls = 'team-cell-btn' + (count===0 ? ' zero' : '') + (selectedResponsableEstado && selectedResponsableEstado.responsable===s && selectedResponsableEstado.bucket===bucket ? ' selected' : '');
+      return `<button class="${cls}" style="color:${ESTADO_SEMANTIC_COLOR[bucket]}" data-responsable="${escapeAttr(s)}" data-bucket="${bucket}" ${count===0?'disabled':''}>${count}</button>`;
+    };
     tbody += `<tr>
       <td class="rowlabel"><button class="team-row-btn ${isSelected?'selected':''}" data-responsable="${escapeAttr(s)}">${s}</button></td>
       <td class="rowtotal">${st.total}</td>
-      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.verde}">${st.verde}</td>
-      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.amarillo}">${st.amarillo}</td>
-      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.gris}">${st.gris}</td>
-      <td class="rowtotal" style="color:${ESTADO_SEMANTIC_COLOR.rojo}">${st.rojo}</td>
+      <td style="padding:0;">${cellBtn('verde')}</td>
+      <td style="padding:0;">${cellBtn('amarillo')}</td>
+      <td style="padding:0;">${cellBtn('gris')}</td>
+      <td style="padding:0;">${cellBtn('rojo')}</td>
       <td class="rowtotal">${avg!==null ? avg+'d' : '—'}</td>
     </tr>`;
   });
@@ -595,6 +606,20 @@ function renderTeamTable(rows){
     btn.addEventListener('click', ()=>{
       const name = btn.dataset.responsable;
       selectedResponsable = (selectedResponsable===name) ? null : name;
+      selectedResponsableEstado = null;
+      renderTeamTable(getFiltered());
+      renderDrill();
+    });
+  });
+  table.querySelectorAll('.team-cell-btn:not(.zero)').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const responsable = btn.dataset.responsable, bucket = btn.dataset.bucket;
+      if(selectedResponsableEstado && selectedResponsableEstado.responsable===responsable && selectedResponsableEstado.bucket===bucket){
+        selectedResponsableEstado = null;
+      } else {
+        selectedResponsableEstado = {responsable, bucket};
+      }
+      selectedResponsable = null;
       renderTeamTable(getFiltered());
       renderDrill();
     });
@@ -603,7 +628,7 @@ function renderTeamTable(rows){
 
 function renderDrill(){
   const drill = document.getElementById('drill');
-  if(!selectedCell && !selectedPeriod && !selectedResponsable && !selectedTipoCrit){
+  if(!selectedCell && !selectedPeriod && !selectedResponsable && !selectedResponsableEstado && !selectedTipoCrit){
     drill.innerHTML = '<div class="empty">Elegí una celda de la matriz, una barra del evolutivo, un tipo de requerimiento o un responsable para ver el detalle.</div>';
     return;
   }
@@ -611,6 +636,7 @@ function renderDrill(){
   if(selectedCell) rows = rows.filter(r=>r.criticidad===selectedCell.crit && r.esfuerzo===selectedCell.esf);
   if(selectedPeriod) rows = rows.filter(r=> r.fecha_req && periodOf(r.fecha_req)===selectedPeriod.period && r.estado===selectedPeriod.estado);
   if(selectedResponsable) rows = rows.filter(r=> r.responsable===selectedResponsable);
+  if(selectedResponsableEstado) rows = rows.filter(r=> r.responsable===selectedResponsableEstado.responsable && estadoBucket(r.estado)===selectedResponsableEstado.bucket);
   if(selectedTipoCrit) rows = rows.filter(r=> r.tipo===selectedTipoCrit.tipo && r.criticidad===selectedTipoCrit.criticidad);
 
   if(rows.length===0){
@@ -621,6 +647,7 @@ function renderDrill(){
   if(selectedCell) titleParts.push(`${selectedCell.crit} · ${selectedCell.esf}`);
   if(selectedPeriod) titleParts.push(`${formatPeriodLabel(selectedPeriod.period)} · ${selectedPeriod.estado}`);
   if(selectedResponsable) titleParts.push(`Responsable: ${selectedResponsable}`);
+  if(selectedResponsableEstado) titleParts.push(`Responsable: ${selectedResponsableEstado.responsable} · ${BUCKET_LABEL[selectedResponsableEstado.bucket]}`);
   if(selectedTipoCrit) titleParts.push(`${selectedTipoCrit.tipo} · ${selectedTipoCrit.criticidad}`);
   const title = titleParts.join('  —  ');
 
@@ -708,6 +735,7 @@ function renderAll(){
   selectedCell = null;
   selectedPeriod = null;
   selectedResponsable = null;
+  selectedResponsableEstado = null;
   selectedTipoCrit = null;
   const rows = getFiltered();
   renderKPIs(rows);
