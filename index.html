@@ -208,6 +208,37 @@ function parseDateStr(v){
   const d = new Date(v);
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0,10);
 }
+
+/* ------------------------------------------------------------
+   NORMALIZACIÓN DE CATEGORÍAS
+   El Sheet se carga a mano (o vía el flujo de n8n) y de tanto en tanto
+   entran valores "sucios": errores de tipeo, mayúsculas distintas,
+   o directamente el valor de Esfuerzo tipeado en la columna Criticidad
+   (p.ej. "Bajo" en Criticidad, o "Media" en Esfuerzo).
+   Sin esto, esos valores no encajan en ninguna de las 4 categorías que
+   arma la matriz y JS revienta al armar la grilla (grid[valor] es
+   undefined), lo que corta la ejecución de renderMatrix() y por lo
+   tanto también deja sin renderizar todo lo que viene después:
+   gráfico apilado, tabla de responsables y evolutivo.
+   Acá normalizamos a las 4 categorías válidas y, si de verdad no se
+   puede identificar, cae en 'Sin clasificar' en vez de romper la página.
+------------------------------------------------------------- */
+const CRIT_ALIASES = {
+  'alta':'Alta', 'alto':'Alta',
+  'media':'Media', 'medio':'Media',
+  'baja':'Baja', 'bajo':'Baja',
+};
+const ESF_ALIASES = {
+  'alto':'Alto', 'alta':'Alto',
+  'medio':'Medio', 'media':'Medio',
+  'bajo':'Bajo', 'baja':'Bajo',
+};
+function normalizeCategory(raw, aliasMap){
+  if(!raw) return 'Sin clasificar';
+  const key = String(raw).trim().toLowerCase();
+  return aliasMap[key] || 'Sin clasificar';
+}
+
 function mapCsvRow(row){
   return {
     id: csvVal(row,'ID_Requerimiento'),
@@ -216,10 +247,10 @@ function mapCsvRow(row){
     responsable: csvVal(row,'Responsable_CI') || 'Sin responsable asignado',
     area: csvVal(row,'Area_Solicitante') || 'Sin área',
     tarea: csvVal(row,'Tarea') || '(sin descripción)',
-    proyecto: csvVal(row,'Proyecto') || '',
+    proyecto: csvVal(row,'Proyecto/Acción') || csvVal(row,'Proyecto') || '',
     tipo: csvVal(row,'Tipo_Requerimiento') || 'Sin tipo',
-    criticidad: csvVal(row,'Criticidad') || 'Sin clasificar',
-    esfuerzo: csvVal(row,'Esfuerzo') || 'Sin clasificar',
+    criticidad: normalizeCategory(csvVal(row,'Criticidad'), CRIT_ALIASES),
+    esfuerzo: normalizeCategory(csvVal(row,'Esfuerzo'), ESF_ALIASES),
     estado: csvVal(row,'Estado') || 'Sin estado',
     fecha_fin_est: parseDateStr(csvVal(row,'Fecha_Fin_Estimada')),
     fecha_cierre: parseDateStr(csvVal(row,'Fecha_Cierre')),
@@ -237,7 +268,12 @@ async function loadData(){
     return {records, source:'remote'};
   } catch(err){
     console.error('No se pudo leer el Google Sheet en vivo, usando snapshot local:', err);
-    const embedded = JSON.parse(document.getElementById('data-json').textContent);
+    const embedded = JSON.parse(document.getElementById('data-json').textContent)
+      .map(r=>({
+        ...r,
+        criticidad: normalizeCategory(r.criticidad, CRIT_ALIASES),
+        esfuerzo: normalizeCategory(r.esfuerzo, ESF_ALIASES),
+      }));
     return {records: embedded, source:'embedded', error: err.message};
   }
 }
@@ -453,7 +489,13 @@ function renderKPIs(rows){
 function buildMatrixData(rows){
   const grid = {};
   CRIT_ORDER.forEach(c=>{ grid[c] = {}; ESF_ORDER.forEach(e=> grid[c][e]=0); });
-  rows.forEach(r=>{ grid[r.criticidad][r.esfuerzo] += 1; });
+  rows.forEach(r=>{
+    // Defensivo: si por algún dato sucio r.criticidad/r.esfuerzo no está en las
+    // categorías esperadas, lo mandamos a "Sin clasificar" en vez de romper la grilla.
+    const crit = (r.criticidad in grid) ? r.criticidad : 'Sin clasificar';
+    const esf = (grid[crit] && r.esfuerzo in grid[crit]) ? r.esfuerzo : 'Sin clasificar';
+    grid[crit][esf] += 1;
+  });
   return grid;
 }
 
@@ -515,7 +557,11 @@ function renderStackChart(rows){
   const tipos = uniqueSorted(rows.map(r=>r.tipo));
   const counts = {};
   tipos.forEach(t=>{ counts[t] = {}; CRIT_ORDER.forEach(c=> counts[t][c]=0); });
-  rows.forEach(r=>{ if(counts[r.tipo]) counts[r.tipo][r.criticidad] += 1; });
+  rows.forEach(r=>{
+    if(!counts[r.tipo]) return;
+    const crit = (r.criticidad in counts[r.tipo]) ? r.criticidad : 'Sin clasificar';
+    counts[r.tipo][crit] += 1;
+  });
   const sortedTipos = tipos.sort((a,b)=>{
     const ta = CRIT_ORDER.reduce((s,c)=>s+counts[a][c],0);
     const tb = CRIT_ORDER.reduce((s,c)=>s+counts[b][c],0);
